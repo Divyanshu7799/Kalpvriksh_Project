@@ -1,0 +1,43 @@
+# Datasets and generated data
+data/
+datasets/
+*.mat
+*.csv
+*.parquet
+*.npy
+*.npz
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Trained models
+models/
+*.pkl
+*.pickle
+*.joblib
+*.onnx
+*.pt
+*.pth
+*.keras
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Generated outputs
+outputs/
+*.log
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
