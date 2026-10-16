@@ -1,5 +1,11 @@
 # Datasets and generated data
-data/
+# raw and processed data stay out of Git; only small labels files are kept
+/data/*
+!/data/interim/
+/data/interim/*
+!/data/interim/cwru/
+/data/interim/cwru/*
+!/data/interim/cwru/labels.csv
 datasets/
 *.mat
 *.csv
