@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from scipy.io import loadmat
 
-PROJECT_ROOT = Path(".")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw" / "cwru"
 LABELS_FILE = PROJECT_ROOT / "data" / "interim" / "cwru" / "labels.csv"
 MANIFEST_FILE = PROJECT_ROOT / "data" / "interim" / "cwru" / "recording_manifest.csv"
@@ -15,6 +15,22 @@ SIGNAL_PATTERN = re.compile(r"^X(\d+)_(DE|FE|BA)_time$")
 RPM_PATTERN = re.compile(r"^X(\d+)RPM$")
 
 CHANNELS = ("DE", "FE", "BA")
+NORMAL_BASELINE_FILES = {"97.mat", "98.mat", "99.mat", "100.mat"}
+FAULT_FOLDERS = {"BF", "IR", "OR"}
+
+
+def get_sampling_rate_hz(recording_path):
+    """Return the sampling rate verified for the selected CWRU collection."""
+    folder = recording_path.parent.name
+    filename = recording_path.name
+
+    if folder == "norml" and filename in NORMAL_BASELINE_FILES:
+        return 48000
+
+    if folder in FAULT_FOLDERS:
+        return 12000
+
+    return ""
 
 
 def load_recording_labels():
@@ -78,12 +94,13 @@ def build_recording_manifest(recording_files, labels):
         signals = discover_signal_variables(mat_data)
         recorded_rpm = extract_recorded_rpm(mat_data)
 
+        sampling_rate_hz = get_sampling_rate_hz(recording_path)
+
         for signal in signals:
             signal_hash = calculate_signal_hash(signal["values"])
             duplicate_key = (signal["channel"], signal_hash)
 
-            # Preserve the first occurrence as the reference. Identical
-            # signals are flagged rather than removed from the raw dataset.
+            # Preserve the first occurrence as the reference.
             duplicate_of = previously_seen_signals.get(duplicate_key)
 
             if duplicate_of is None:
@@ -104,6 +121,7 @@ def build_recording_manifest(recording_files, labels):
                     "internal_id": signal["internal_id"],
                     "channel": signal["channel"],
                     "samples": signal["values"].shape[0],
+                    "sampling_rate_hz": sampling_rate_hz,
                     "sha256": signal_hash,
                     "duplicate_of": duplicate_of or "",
                 }
@@ -128,6 +146,7 @@ def save_recording_manifest(manifest_rows):
         "internal_id",
         "channel",
         "samples",
+        "sampling_rate_hz",
         "sha256",
         "duplicate_of",
     ]
