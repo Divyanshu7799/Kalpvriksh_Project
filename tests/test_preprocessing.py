@@ -1,12 +1,11 @@
 import numpy as np
-from scipy.io import loadmat
 
 from machineguard.data.preprocessing import resample_signal
 
 
-def test_resample_normal_de_signal():
-    mat_data = loadmat("data/raw/cwru/norml/97.mat")
-    original_signal = mat_data["X097_DE_time"].reshape(-1)
+def test_resample_signal():
+    """Resampling should change the sample count without modifying the input."""
+    original_signal = np.sin(np.linspace(0, 20 * np.pi, 4000, endpoint=False))
     original_copy = original_signal.copy()
 
     resampled_signal = resample_signal(
@@ -15,7 +14,7 @@ def test_resample_normal_de_signal():
         target_rate_hz=12000,
     )
 
-    assert resampled_signal.size == (original_signal.size + 3) // 4
+    assert resampled_signal.size == 1000
     assert np.isfinite(resampled_signal).all()
     assert np.array_equal(original_signal, original_copy)
 

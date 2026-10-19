@@ -1,5 +1,6 @@
 # Datasets and generated data
 # raw and processed data stay out of Git; only small labels files are kept
+*.csv
 /data/*
 !/data/interim/
 /data/interim/*
@@ -8,7 +9,6 @@
 !/data/interim/cwru/labels.csv
 datasets/
 *.mat
-*.csv
 *.parquet
 *.npy
 *.npz
