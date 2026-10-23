@@ -40,10 +40,10 @@ models/
 .env.*
 !.env.example
 
-  # Generated outputs
-  outputs/
-  *.log
-  sandbox/
+# Generated outputs
+outputs/
+*.log
+sandbox/
 # Editors and operating systems
 .vscode/
 .idea/
