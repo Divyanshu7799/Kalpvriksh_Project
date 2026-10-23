@@ -5,10 +5,12 @@
 /data/interim/*
 !/data/interim/cwru/
 /data/interim/cwru/*
-!/data/interim/cwru/labels.csv
+
 datasets/
 *.mat
 *.csv
+!/data/interim/cwru/labels.csv
+!/docs/feature_engineering/*.csv
 *.parquet
 *.npy
 *.npz
@@ -38,10 +40,10 @@ models/
 .env.*
 !.env.example
 
-# Generated outputs
-outputs/
-*.log
-
+  # Generated outputs
+  outputs/
+  *.log
+  sandbox/
 # Editors and operating systems
 .vscode/
 .idea/

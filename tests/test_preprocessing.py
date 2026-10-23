@@ -1,12 +1,10 @@
 import numpy as np
-from scipy.io import loadmat
 
 from machineguard.data.preprocessing import resample_signal
 
 
-def test_resample_normal_de_signal():
-    mat_data = loadmat("data/raw/cwru/norml/97.mat")
-    original_signal = mat_data["X097_DE_time"].reshape(-1)
+def test_resample_48khz_to_12khz_keeps_expected_length():
+    original_signal = np.random.default_rng(0).normal(size=4801)
     original_copy = original_signal.copy()
 
     resampled_signal = resample_signal(
