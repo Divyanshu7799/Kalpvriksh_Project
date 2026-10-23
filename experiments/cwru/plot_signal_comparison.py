@@ -1,10 +1,8 @@
-
 import csv
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "cwru"
@@ -20,9 +18,7 @@ CLASS_ORDER = ["Normal", "B", "IR", "OR"]
 
 def load_recordings():
     """Select one processed recording for each available fault class."""
-    with MANIFEST_PATH.open(
-        newline="", encoding="utf-8"
-    ) as file:
+    with MANIFEST_PATH.open(newline="", encoding="utf-8") as file:
         rows = list(csv.DictReader(file))
 
     recordings = {}
@@ -82,17 +78,13 @@ def plot_comparison(recordings):
         segment = signal[:SAMPLES_FOR_SPECTRUM]
 
         # Time-domain waveform: first 0.1 seconds.
-        time = (
-            np.arange(SAMPLES_FOR_WAVEFORM) / sampling_rate
-        )
+        time = np.arange(SAMPLES_FOR_WAVEFORM) / sampling_rate
         axes[row_index, 0].plot(
             time,
             segment[:SAMPLES_FOR_WAVEFORM],
             linewidth=0.7,
         )
-        axes[row_index, 0].set_title(
-            f"{fault_type} — {filename}"
-        )
+        axes[row_index, 0].set_title(f"{fault_type} — {filename}")
         axes[row_index, 0].set_xlabel("Time (seconds)")
         axes[row_index, 0].set_ylabel("Amplitude")
         axes[row_index, 0].grid(True, alpha=0.3)
@@ -100,9 +92,7 @@ def plot_comparison(recordings):
         # Frequency-domain amplitude spectrum.
         # A Hann window reduces spectral leakage.
         window = np.hanning(segment.size)
-        spectrum = np.abs(
-            np.fft.rfft(segment * window)
-        )
+        spectrum = np.abs(np.fft.rfft(segment * window))
         spectrum *= 2.0 / window.sum()
 
         frequencies = np.fft.rfftfreq(
@@ -116,9 +106,7 @@ def plot_comparison(recordings):
             linewidth=0.7,
         )
         axes[row_index, 1].set_xlim(0, MAX_FREQUENCY_HZ)
-        axes[row_index, 1].set_title(
-            f"{fault_type} — amplitude spectrum"
-        )
+        axes[row_index, 1].set_title(f"{fault_type} — amplitude spectrum")
         axes[row_index, 1].set_xlabel("Frequency (Hz)")
         axes[row_index, 1].set_ylabel("Amplitude")
         axes[row_index, 1].grid(True, alpha=0.3)

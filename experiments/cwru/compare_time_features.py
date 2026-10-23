@@ -1,4 +1,3 @@
-
 import csv
 from pathlib import Path
 
@@ -6,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import kurtosis
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "cwru"
@@ -38,9 +36,7 @@ def calculate_features(signal):
 
 def build_feature_table():
     """Calculate features for every successfully processed recording."""
-    with MANIFEST_PATH.open(
-        newline="", encoding="utf-8"
-    ) as file:
+    with MANIFEST_PATH.open(newline="", encoding="utf-8") as file:
         manifest = list(csv.DictReader(file))
 
     records = []
@@ -78,9 +74,7 @@ def plot_feature_distributions(features):
 
     for axis, feature in zip(axes.flat, FEATURES):
         grouped_values = [
-            features.loc[
-                features["fault_type"] == fault_type, feature
-            ].dropna().to_numpy()
+            features.loc[features["fault_type"] == fault_type, feature].dropna().to_numpy()
             for fault_type in CLASS_ORDER
         ]
 
@@ -114,12 +108,7 @@ def main():
     print(features["fault_type"].value_counts().reindex(CLASS_ORDER))
 
     print("\nFeature medians by class:")
-    print(
-        features.groupby("fault_type")[FEATURES]
-        .median()
-        .reindex(CLASS_ORDER)
-        .round(5)
-    )
+    print(features.groupby("fault_type")[FEATURES].median().reindex(CLASS_ORDER).round(5))
 
     print(f"\nFeature table saved to: {csv_path}")
     plot_feature_distributions(features)
