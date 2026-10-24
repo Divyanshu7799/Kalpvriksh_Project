@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from machineguard.data.preprocessing import resample_signal
 
@@ -19,8 +20,6 @@ def test_resample_48khz_to_12khz_keeps_expected_length():
 
 
 def test_resample_rejects_empty_signal():
-    import pytest
-
     with pytest.raises(ValueError, match="Signal must not be empty"):
         resample_signal(
             np.array([]),
