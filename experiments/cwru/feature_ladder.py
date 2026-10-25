@@ -1,0 +1,96 @@
+"""Feature ladder experiment: a dummy baseline versus a classifier on chosen features.
+?"
+
+Run from the project root, naming the features to use:
+    python experiments/cwru/feature_ladder.py --features rms
+    python experiments/cwru/feature_ladder.py --features rms kurtosis
+    python experiments/cwru/feature_ladder.py --features rms kurtosis crest_factor
+
+"""
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+import numpy as np
+from machineguard.models.evaluation import CLASS_ORDER, LOGISTIC_REGRESSION, evaluate_held_out_load
+
+from machineguard.data.recording_table import build_window_table, load_recording_table
+from machineguard.features.time_domain import FEATURE_FUNCTIONS
+
+logger = logging.getLogger(__name__)
+
+# --- Configuration -------------------------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "cwru"
+PROCESSED_MANIFEST = PROCESSED_DIR / "processed_manifest.csv"
+LABELS_FILE = PROJECT_ROOT / "data" / "interim" / "cwru" / "labels.csv"
+
+# Provisional: to be chosen by the window-size experiment, not by habit.
+WINDOW_SIZE = 2048
+OVERLAP = 0.5
+
+# Loads 0-2 are used to develop and compare feature sets. Load 3 is a lock-box: it is
+# touched once, at the very end, with --final.
+DEVELOPMENT_LOADS_HP = [0, 1, 2]
+LOCKBOX_LOAD_HP = 3
+
+
+# --- Entry point: the only place that catches errors --------------------------------------------
+def main(argv=None):
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    arguments = parse_arguments(argv)
+    try:
+        run_experiment(arguments.features, arguments.final)
+    except (FileNotFoundError, ValueError) as error:
+        logger.error("Experiment stopped: %s", error)
+        sys.exit(1)
+
+
+def parse_arguments(argv):
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--features", nargs="+", default=["rms"], choices=sorted(FEATURE_FUNCTIONS))
+    parser.add_argument("--final", action="store_true", help="evaluate once on the lock-box load")
+    return parser.parse_args(argv)
+
+
+# --- The experiment, step by step ----------------------------------------------------------------
+def run_experiment(feature_names, final):
+    recordings = load_recording_table(PROCESSED_MANIFEST, LABELS_FILE)
+    logger.info("%d labelled recordings", len(recordings))
+    window_table = build_window_table(recordings, PROCESSED_DIR, feature_names, WINDOW_SIZE, OVERLAP)
+    logger.info("%d windows", len(window_table))
+
+    loads_to_test, usable_windows = choose_loads(window_table, final)
+    all_results = {load: evaluate_held_out_load(usable_windows, feature_names, load) for load in loads_to_test}
+    report(all_results, feature_names)
+
+
+def choose_loads(window_table, final):
+    """Return (loads to hold out one by one, the windows that may be used)."""
+    if final:
+        # Train on the development loads, test once on the untouched load.
+        return [LOCKBOX_LOAD_HP], window_table
+    # The lock-box load is used neither for training nor for testing.
+    development_windows = window_table[window_table["load_hp"].isin(DEVELOPMENT_LOADS_HP)]
+    return DEVELOPMENT_LOADS_HP, development_windows
+
+
+def report(all_results, feature_names):
+    loads = list(all_results)
+    model_names = list(next(iter(all_results.values())).keys())
+
+    print(f"\nFeatures: {feature_names} | window={WINDOW_SIZE} overlap={OVERLAP}")
+    print("\nMacro-F1 when each load is held out:")
+    for name in model_names:
+        scores = [all_results[load][name][0] for load in loads]
+        per_load = "  ".join(f"load {load}: {score:.2f}" for load, score in zip(loads, scores))
+        print(f"  {name:28s} {per_load}   mean: {np.mean(scores):.2f}")
+
+    print(f"\nConfusion matrix (rows = true, columns = predicted), summed over folds. Order: {CLASS_ORDER}")
+    print(sum(all_results[load][LOGISTIC_REGRESSION][1] for load in loads))
+
+
+if __name__ == "__main__":
+    main()
