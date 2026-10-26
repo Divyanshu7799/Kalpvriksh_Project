@@ -1,32 +1,30 @@
 """Feature ladder experiment: a dummy baseline versus a classifier on chosen features.
-?"
+
+Question answered: "How much do these features tell us about the 4 CWRU classes
+(Normal, B, IR, OR) on a load the model has never seen?"
 
 Run from the project root, naming the features to use:
     python experiments/cwru/feature_ladder.py --features rms
     python experiments/cwru/feature_ladder.py --features rms kurtosis
     python experiments/cwru/feature_ladder.py --features rms kurtosis crest_factor
 
+Add --final only once, when the feature set is frozen: it trains on loads 0-2 and tests on load 3.
 """
 
 import argparse
 import logging
 import sys
-from pathlib import Path
 
 import numpy as np
-from machineguard.models.evaluation import CLASS_ORDER, LOGISTIC_REGRESSION, evaluate_held_out_load
+from machineguard.config import CWRU_LABELS_FILE, CWRU_PROCESSED_DIR, CWRU_PROCESSED_MANIFEST_FILE
 
 from machineguard.data.recording_table import build_window_table, load_recording_table
 from machineguard.features.time_domain import FEATURE_FUNCTIONS
+from machineguard.models.evaluation import CLASS_ORDER, LOGISTIC_REGRESSION, evaluate_held_out_load
 
 logger = logging.getLogger(__name__)
 
 # --- Configuration -------------------------------------------------------------------------------
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "cwru"
-PROCESSED_MANIFEST = PROCESSED_DIR / "processed_manifest.csv"
-LABELS_FILE = PROJECT_ROOT / "data" / "interim" / "cwru" / "labels.csv"
-
 # Provisional: to be chosen by the window-size experiment, not by habit.
 WINDOW_SIZE = 2048
 OVERLAP = 0.5
@@ -57,9 +55,9 @@ def parse_arguments(argv):
 
 # --- The experiment, step by step ----------------------------------------------------------------
 def run_experiment(feature_names, final):
-    recordings = load_recording_table(PROCESSED_MANIFEST, LABELS_FILE)
+    recordings = load_recording_table(CWRU_PROCESSED_MANIFEST_FILE, CWRU_LABELS_FILE)
     logger.info("%d labelled recordings", len(recordings))
-    window_table = build_window_table(recordings, PROCESSED_DIR, feature_names, WINDOW_SIZE, OVERLAP)
+    window_table = build_window_table(recordings, CWRU_PROCESSED_DIR, feature_names, WINDOW_SIZE, OVERLAP)
     logger.info("%d windows", len(window_table))
 
     loads_to_test, usable_windows = choose_loads(window_table, final)
@@ -84,12 +82,12 @@ def report(all_results, feature_names):
     print(f"\nFeatures: {feature_names} | window={WINDOW_SIZE} overlap={OVERLAP}")
     print("\nMacro-F1 when each load is held out:")
     for name in model_names:
-        scores = [all_results[load][name][0] for load in loads]
+        scores = [all_results[load][name].macro_f1 for load in loads]
         per_load = "  ".join(f"load {load}: {score:.2f}" for load, score in zip(loads, scores))
         print(f"  {name:28s} {per_load}   mean: {np.mean(scores):.2f}")
 
     print(f"\nConfusion matrix (rows = true, columns = predicted), summed over folds. Order: {CLASS_ORDER}")
-    print(sum(all_results[load][LOGISTIC_REGRESSION][1] for load in loads))
+    print(sum(all_results[load][LOGISTIC_REGRESSION].confusion for load in loads))
 
 
 if __name__ == "__main__":
