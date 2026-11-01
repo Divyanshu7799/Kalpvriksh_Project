@@ -1,17 +1,18 @@
 # Datasets and generated data
-# raw and processed data stay out of Git; only small labels files are kept
-*.csv
+# raw and processed data stay out of Git; only small labels and result tables are kept
 /data/*
 !/data/interim/
 /data/interim/*
 !/data/interim/cwru/
 /data/interim/cwru/*
-!/data/interim/cwru/labels.csv
 datasets/
 *.mat
+*.csv
 *.parquet
 *.npy
 *.npz
+!/data/interim/cwru/labels.csv
+!/docs/feature_engineering/*.csv
 
 # Python
 __pycache__/
@@ -19,12 +20,13 @@ __pycache__/
 .venv/
 venv/
 env/
+*.egg-info/
 
 # Jupyter
 .ipynb_checkpoints/
 
 # Trained models
-models/
+/models/
 *.pkl
 *.pickle
 *.joblib
@@ -41,6 +43,7 @@ models/
 # Generated outputs
 outputs/
 *.log
+sandbox/
 
 # Editors and operating systems
 .vscode/
