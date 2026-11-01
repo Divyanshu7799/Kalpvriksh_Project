@@ -16,11 +16,11 @@ import logging
 import sys
 
 import numpy as np
-from machineguard.config import CWRU_LABELS_FILE, CWRU_PROCESSED_DIR, CWRU_PROCESSED_MANIFEST_FILE
 
+from machineguard.config import CLASS_ORDER, CWRU_LABELS_FILE, CWRU_PROCESSED_DIR, CWRU_PROCESSED_MANIFEST_FILE
 from machineguard.data.recording_table import build_window_table, load_recording_table
 from machineguard.features.time_domain import FEATURE_FUNCTIONS
-from machineguard.models.evaluation import CLASS_ORDER, LOGISTIC_REGRESSION, evaluate_held_out_load
+from machineguard.models.evaluation import LOGISTIC_REGRESSION, evaluate_held_out_load
 
 logger = logging.getLogger(__name__)
 
