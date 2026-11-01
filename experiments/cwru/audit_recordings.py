@@ -8,26 +8,20 @@ Run from the project root (after make_labels.py):
 """
 
 import csv
-import hashlib
 import logging
-import re
 import sys
 
-import numpy as np
-from machineguard.config import CWRU_LABELS_FILE, CWRU_MANIFEST_FILE, CWRU_RAW_DIR, PROJECT_ROOT
 from scipy.io import loadmat
 
+from machineguard.config import CWRU_LABELS_FILE, CWRU_MANIFEST_FILE, CWRU_RAW_DIR, project_relative
+from machineguard.data.cwru_mat import (
+    calculate_signal_hash,
+    discover_signal_variables,
+    extract_recorded_rpm,
+    get_sampling_rate_hz,
+)
+
 logger = logging.getLogger(__name__)
-
-SIGNAL_PATTERN = re.compile(r"^X(\d+)_(DE|FE|BA)_time$")
-RPM_PATTERN = re.compile(r"^X(\d+)RPM$")
-
-# Sampling rates verified for the selected CWRU collection.
-NORMAL_BASELINE_FOLDER = "norml"
-NORMAL_BASELINE_FILES = {"97.mat", "98.mat", "99.mat", "100.mat"}
-NORMAL_BASELINE_RATE_HZ = 48000
-FAULT_FOLDERS = {"BF", "IR", "OR"}
-FAULT_RATE_HZ = 12000
 
 MANIFEST_COLUMNS = [
     "file",
@@ -47,7 +41,7 @@ MANIFEST_COLUMNS = [
 ]
 
 
-# --- Entry point: the only place that catches errors --------------------------------------------
+# --- Level 1: the whole audit --------------------------------------------------------------------
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
@@ -57,7 +51,6 @@ def main():
         sys.exit(1)
 
 
-# --- The audit, step by step ---------------------------------------------------------------------
 def run_audit():
     labels = load_recording_labels()
     recording_files = discover_recording_files()
@@ -67,6 +60,7 @@ def run_audit():
     print_audit_summary(recording_files, manifest_rows, labels)
 
 
+# --- Level 2: the steps of the audit -------------------------------------------------------------
 def load_recording_labels():
     """Load CSV metadata indexed by the physical MAT filename."""
     if not CWRU_LABELS_FILE.exists():
@@ -118,40 +112,41 @@ def print_audit_summary(recording_files, manifest_rows, labels):
     print(f"Manifest saved to: {CWRU_MANIFEST_FILE}")
 
 
-# --- One recording -------------------------------------------------------------------------------
+# --- Level 3: one recording, one signal ----------------------------------------------------------
 def rows_for_recording(recording_path, recording_labels, first_seen):
-    """Manifest rows for every signal in one MAT file. Updates first_seen to detect duplicates."""
+    """Manifest rows for every signal in one MAT file."""
     mat_data = loadmat(recording_path)
-    rpm_in_file = ";".join(map(str, extract_recorded_rpm(mat_data)))
-    sampling_rate_hz = get_sampling_rate_hz(recording_path)
+    facts = facts_about_recording(recording_path, recording_labels, mat_data)
 
-    rows = []
-    for signal in discover_signal_variables(mat_data):
-        signal_hash = calculate_signal_hash(signal["values"])
-        duplicate_of = first_seen.get((signal["channel"], signal_hash))
-
-        if duplicate_of is None:  # the first occurrence is the reference
-            first_seen[(signal["channel"], signal_hash)] = (
-                f"{recording_path.relative_to(PROJECT_ROOT)}:{signal['variable']}"
-            )
-
-        rows.append(
-            {
-                "file": recording_path.name,
-                "folder": recording_path.parent.name,
-                **label_fields(recording_labels),
-                "rpm_mat": rpm_in_file,
-                "internal_id": signal["internal_id"],
-                "channel": signal["channel"],
-                "samples": signal["values"].shape[0],
-                "sampling_rate_hz": sampling_rate_hz,
-                "sha256": signal_hash,
-                "duplicate_of": duplicate_of or "",
-            }
-        )
-    return rows
+    return [manifest_row(facts, recording_path, signal, first_seen) for signal in discover_signal_variables(mat_data)]
 
 
+def facts_about_recording(recording_path, recording_labels, mat_data):
+    """The manifest columns that are the same for every signal of one recording."""
+    return {
+        "file": recording_path.name,
+        "folder": recording_path.parent.name,
+        **label_fields(recording_labels),
+        "rpm_mat": ";".join(map(str, extract_recorded_rpm(mat_data))),
+        "sampling_rate_hz": get_sampling_rate_hz(recording_path),
+    }
+
+
+def manifest_row(facts, recording_path, signal, first_seen):
+    """One manifest row: the recording's facts plus what is specific to this signal."""
+    signal_hash = calculate_signal_hash(signal["values"])
+
+    return {
+        **facts,
+        "internal_id": signal["internal_id"],
+        "channel": signal["channel"],
+        "samples": signal["values"].shape[0],
+        "sha256": signal_hash,
+        "duplicate_of": note_first_occurrence(first_seen, recording_path, signal, signal_hash),
+    }
+
+
+# --- Level 4: details ----------------------------------------------------------------------------
 def label_fields(recording_labels):
     """The label columns of a manifest row; unknown values stay empty, never invented."""
     return {
@@ -163,51 +158,15 @@ def label_fields(recording_labels):
     }
 
 
-# --- Small helpers -------------------------------------------------------------------------------
-def get_sampling_rate_hz(recording_path):
-    """Return the verified sampling rate of a recording, or None when it is not known."""
-    folder = recording_path.parent.name
+def note_first_occurrence(first_seen, recording_path, signal, signal_hash):
+    """Return where this signal was first seen ('' if this is its first appearance); remember new ones."""
+    key = (signal["channel"], signal_hash)
 
-    if folder == NORMAL_BASELINE_FOLDER and recording_path.name in NORMAL_BASELINE_FILES:
-        return NORMAL_BASELINE_RATE_HZ
+    if key in first_seen:
+        return first_seen[key]
 
-    if folder in FAULT_FOLDERS:
-        return FAULT_RATE_HZ
-
-    return None
-
-
-def discover_signal_variables(mat_data):
-    """Return recognized vibration signals and their internal IDs."""
-    signals = []
-
-    for variable_name, values in mat_data.items():
-        match = SIGNAL_PATTERN.fullmatch(variable_name)
-
-        if match:
-            internal_id, channel = match.groups()
-            signals.append(
-                {"variable": variable_name, "internal_id": internal_id, "channel": channel, "values": values}
-            )
-
-    return signals
-
-
-def extract_recorded_rpm(mat_data):
-    """Extract available RPM values without inventing missing values."""
-    rpm_values = []
-
-    for variable_name, values in mat_data.items():
-        if RPM_PATTERN.fullmatch(variable_name):
-            rpm_values.append(int(values.item()))
-
-    return sorted(set(rpm_values))
-
-
-def calculate_signal_hash(signal):
-    """Calculate a stable hash of a signal's array contents."""
-    values = np.ascontiguousarray(signal)
-    return hashlib.sha256(values.tobytes()).hexdigest()
+    first_seen[key] = f"{project_relative(recording_path)}:{signal['variable']}"
+    return ""
 
 
 if __name__ == "__main__":
