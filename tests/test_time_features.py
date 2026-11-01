@@ -1,6 +1,11 @@
 import numpy as np
 
-from machineguard.features.time_domain import crest_factor_per_window, kurtosis_per_window, rms_per_window
+from machineguard.features.time_domain import (
+    crest_factor_per_window,
+    kurtosis_per_window,
+    rms_per_window,
+    std_per_window,
+)
 
 
 def test_rms_of_each_window():
@@ -30,3 +35,15 @@ def test_crest_factor_is_peak_over_rms():
     windows = np.array([[3.0, 4.0]])
 
     np.testing.assert_allclose(crest_factor_per_window(windows), [4.0 / np.sqrt(12.5)])
+
+
+def test_std_ignores_a_constant_offset():
+    windows = np.array([[1.0, 3.0], [11.0, 13.0]])
+
+    np.testing.assert_allclose(std_per_window(windows), [1.0, 1.0])
+
+
+def test_crest_factor_of_an_all_zero_window_is_nan_not_an_error():
+    windows = np.zeros((1, 8))
+
+    assert np.isnan(crest_factor_per_window(windows)[0])

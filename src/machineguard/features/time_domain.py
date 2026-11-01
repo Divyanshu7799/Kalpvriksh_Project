@@ -18,13 +18,21 @@ def kurtosis_per_window(windows):
     return kurtosis(windows, axis=1)
 
 
+def std_per_window(windows):
+    """Standard deviation of each window."""
+    return np.std(windows, axis=1)
+
+
 def crest_factor_per_window(windows):
-    """Peak absolute amplitude divided by RMS, for each window."""
-    return np.max(np.abs(windows), axis=1) / rms_per_window(windows)
+    """Peak absolute amplitude divided by RMS, for each window. NaN for a window of all zeros."""
+    rms = rms_per_window(windows)
+    peak = np.max(np.abs(windows), axis=1)
+    return np.divide(peak, rms, out=np.full(rms.shape, np.nan), where=rms > 0)
 
 
 FEATURE_FUNCTIONS = {
     "rms": rms_per_window,
+    "std": std_per_window,
     "kurtosis": kurtosis_per_window,
     "crest_factor": crest_factor_per_window,
 }
