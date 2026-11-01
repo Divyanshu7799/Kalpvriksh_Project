@@ -1,10 +1,14 @@
+"""Build labels.csv (fault type, size, position, load, rpm) from the CWRU file names."""
+
 import csv
+import logging
 import re
+import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw" / "cwru"
-LABELS_FILE = PROJECT_ROOT / "data" / "interim" / "cwru" / "labels.csv"
+from machineguard.config import CWRU_LABELS_FILE, CWRU_RAW_DIR
+
+logger = logging.getLogger(__name__)
 
 CLASS_OF = {
     "norml": "Normal",
@@ -40,55 +44,61 @@ GROUPS = {
     ],
 }
 
+FILES_PER_CONDITION = 4  # one recording for each load, 0 to 3 HP
 RPM_BY_LOAD = [1797, 1772, 1750, 1730]
 FIELDNAMES = ["file", "fault_type", "size_in", "or_position", "load_hp", "rpm"]
+UNKNOWN = "?"
 
 
-def build_labels(data_root=RAW_DATA_DIR, output_path=LABELS_FILE):
+# --- Level 1: the whole job ----------------------------------------------------------------------
+def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    try:
+        rows = build_labels()
+    except FileNotFoundError as error:
+        logger.error("Label generation stopped: %s", error)
+        sys.exit(1)
+    print(f"{len(rows)} files written to {CWRU_LABELS_FILE}")
+
+
+def build_labels(data_root=CWRU_RAW_DIR, output_path=CWRU_LABELS_FILE):
     """Build a CWRU labels CSV from the raw recording directory."""
-    data_root = Path(data_root)
-    output_path = Path(output_path)
+    rows = [label_row(fault_type, path) for fault_type, path in find_recordings(Path(data_root))]
+    rows.sort(key=lambda row: (row[1], row[0]))
 
+    write_labels(rows, Path(output_path))
+    return rows
+
+
+# --- Level 2: the steps --------------------------------------------------------------------------
+def find_recordings(data_root):
+    """List (fault type, path) for every recording file inside a known class folder."""
     if not data_root.is_dir():
         raise FileNotFoundError(f"Raw data directory not found: {data_root}")
 
-    rows = []
-
+    recordings = []
     for folder in sorted(data_root.iterdir()):
-        if not folder.is_dir():
-            continue
-
-        fault_type = CLASS_OF.get(folder.name.lower())
+        fault_type = CLASS_OF.get(folder.name.lower()) if folder.is_dir() else None
         if fault_type is None:
             continue
 
-        for file_path in sorted(folder.rglob("*")):
-            if not file_path.is_file():
-                continue
+        recordings.extend((fault_type, path) for path in sorted(folder.rglob("*")) if is_recording(path))
+    return recordings
 
-            match = re.match(r"(\d+)", file_path.stem)
-            if match is None:
-                continue
 
-            file_id = int(match.group(1))
-            size, position, load = "?", "?", "?"
+def label_row(fault_type, path):
+    """One labels row for a recording; unknown IDs get '?' and a warning, never a guess."""
+    condition = lookup_condition(fault_type, file_id_of(path))
 
-            for first_id, fault_size, fault_position in GROUPS[fault_type]:
-                if first_id <= file_id < first_id + 4:
-                    size = fault_size
-                    position = fault_position
-                    load = file_id - first_id
-                    break
+    if condition is None:
+        logger.warning("Metadata mapping not found for %s", path.name)
+        return [path.name, fault_type, UNKNOWN, UNKNOWN, UNKNOWN, UNKNOWN]
 
-            if load == "?":
-                print(f"Warning: metadata mapping not found for {file_path.name}")
+    size, position, load = condition
+    return [path.name, fault_type, size, position, load, RPM_BY_LOAD[load]]
 
-            rpm = RPM_BY_LOAD[load] if load != "?" else "?"
 
-            rows.append([file_path.name, fault_type, size, position, load, rpm])
-
-    rows.sort(key=lambda row: (row[1], row[0]))
-
+def write_labels(rows, output_path):
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with output_path.open("w", newline="", encoding="utf-8") as file:
@@ -96,13 +106,22 @@ def build_labels(data_root=RAW_DATA_DIR, output_path=LABELS_FILE):
         writer.writerow(FIELDNAMES)
         writer.writerows(rows)
 
-    return rows
+
+# --- Level 3: details ----------------------------------------------------------------------------
+def lookup_condition(fault_type, file_id):
+    """Return (size in inches, position, load index) for a file ID, or None if the ID is unknown."""
+    for first_id, size, position in GROUPS[fault_type]:
+        if first_id <= file_id < first_id + FILES_PER_CONDITION:
+            return size, position, file_id - first_id
+    return None
 
 
-def main():
-    """Generate labels and report the output location."""
-    rows = build_labels()
-    print(f"{len(rows)} files written to {LABELS_FILE}")
+def is_recording(path):
+    return path.is_file() and re.match(r"\d+", path.stem) is not None
+
+
+def file_id_of(path):
+    return int(re.match(r"\d+", path.stem).group())
 
 
 if __name__ == "__main__":
