@@ -1,126 +1,109 @@
-import csv
-from pathlib import Path
+"""Look at the data first: a waveform and an amplitude spectrum for one recording of each class.
+
+Run from the project root (after preprocess_recordings.py):
+    python experiments/cwru/plot_signal_comparison.py
+"""
+
+import logging
+import sys
+from collections import namedtuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "cwru"
-MANIFEST_PATH = PROCESSED_DIR / "processed_manifest.csv"
-OUTPUT_PATH = PROJECT_ROOT / "docs" / "cwru_signal_comparison.png"
+from machineguard.config import CLASS_ORDER, DOCS_DIR
+from machineguard.data.recording_table import load_processed_signal, read_processed_manifest
+from machineguard.signal.spectrum import amplitude_spectrum
+
+logger = logging.getLogger(__name__)
+
+OUTPUT_PATH = DOCS_DIR / "cwru_signal_comparison.png"
 
 SAMPLES_FOR_SPECTRUM = 6000  # 0.5 seconds at 12 kHz
 SAMPLES_FOR_WAVEFORM = 1200  # 0.1 seconds at 12 kHz
 MAX_FREQUENCY_HZ = 3000
 
-CLASS_ORDER = ["Normal", "B", "IR", "OR"]
+Example = namedtuple("Example", ["filename", "signal", "sample_rate_hz"])
 
 
-def load_recordings():
-    """Select one processed recording for each available fault class."""
-    with MANIFEST_PATH.open(newline="", encoding="utf-8") as file:
-        rows = list(csv.DictReader(file))
+# --- Level 1: the whole job ----------------------------------------------------------------------
+def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    try:
+        make_comparison_figure()
+    except (OSError, ValueError, KeyError) as error:
+        logger.error("Plot stopped: %s", error)
+        sys.exit(1)
 
-    recordings = {}
 
-    for row in sorted(rows, key=lambda item: item["source_file"]):
+def make_comparison_figure():
+    examples = choose_examples(read_processed_manifest())
+    figure = draw_comparison(examples)
+    save_figure(figure, OUTPUT_PATH)
+
+
+# --- Level 2: the steps --------------------------------------------------------------------------
+def choose_examples(manifest_rows):
+    """The first usable processed recording of each class, as {class: Example}."""
+    examples = {}
+
+    for row in sorted(manifest_rows, key=lambda item: item["source_file"]):
         fault_type = row["fault_type"]
-
-        if row["status"] != "processed":
+        if fault_type not in CLASS_ORDER or fault_type in examples:
             continue
 
-        if fault_type not in CLASS_ORDER:
-            continue
-
-        if fault_type in recordings:
-            continue
-
-        signal_path = PROCESSED_DIR / row["output_file"]
-        signal = np.asarray(np.load(signal_path), dtype=float).ravel()
-        sampling_rate = int(row["target_rate_hz"])
-
+        signal = load_processed_signal(row["output_file"])
         if signal.size < SAMPLES_FOR_SPECTRUM:
-            print(f"Skipping short recording: {signal_path.name}")
+            logger.info("Skipping short recording: %s", row["output_file"])
             continue
 
-        if not np.isfinite(signal).all():
-            raise ValueError(f"Non-finite values in {signal_path.name}")
+        examples[fault_type] = Example(row["output_file"], signal, int(row["target_rate_hz"]))
 
-        recordings[fault_type] = {
-            "signal": signal,
-            "sampling_rate": sampling_rate,
-            "filename": signal_path.name,
-        }
-
-    missing = set(CLASS_ORDER) - set(recordings)
+    missing = set(CLASS_ORDER) - set(examples)
     if missing:
         raise ValueError(f"No usable recordings found for: {sorted(missing)}")
-
-    return recordings
-
-
-def plot_comparison(recordings):
-    """Plot time waveforms and amplitude spectra for each class."""
-    fig, axes = plt.subplots(
-        nrows=4,
-        ncols=2,
-        figsize=(14, 14),
-        constrained_layout=True,
-    )
-
-    for row_index, fault_type in enumerate(CLASS_ORDER):
-        recording = recordings[fault_type]
-        signal = recording["signal"]
-        sampling_rate = recording["sampling_rate"]
-        filename = recording["filename"]
-
-        # Use the same duration for each recording.
-        segment = signal[:SAMPLES_FOR_SPECTRUM]
-
-        # Time-domain waveform: first 0.1 seconds.
-        time = np.arange(SAMPLES_FOR_WAVEFORM) / sampling_rate
-        axes[row_index, 0].plot(
-            time,
-            segment[:SAMPLES_FOR_WAVEFORM],
-            linewidth=0.7,
-        )
-        axes[row_index, 0].set_title(f"{fault_type} — {filename}")
-        axes[row_index, 0].set_xlabel("Time (seconds)")
-        axes[row_index, 0].set_ylabel("Amplitude")
-        axes[row_index, 0].grid(True, alpha=0.3)
-
-        # Frequency-domain amplitude spectrum.
-        # A Hann window reduces spectral leakage.
-        window = np.hanning(segment.size)
-        spectrum = np.abs(np.fft.rfft(segment * window))
-        spectrum *= 2.0 / window.sum()
-
-        frequencies = np.fft.rfftfreq(
-            segment.size,
-            d=1.0 / sampling_rate,
-        )
-
-        axes[row_index, 1].plot(
-            frequencies,
-            spectrum,
-            linewidth=0.7,
-        )
-        axes[row_index, 1].set_xlim(0, MAX_FREQUENCY_HZ)
-        axes[row_index, 1].set_title(f"{fault_type} — amplitude spectrum")
-        axes[row_index, 1].set_xlabel("Frequency (Hz)")
-        axes[row_index, 1].set_ylabel("Amplitude")
-        axes[row_index, 1].grid(True, alpha=0.3)
-
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUTPUT_PATH, dpi=160)
-    plt.show()
-
-    print(f"Plot saved to: {OUTPUT_PATH}")
+    return examples
 
 
-def main():
-    recordings = load_recordings()
-    plot_comparison(recordings)
+def draw_comparison(examples):
+    """One row per class: waveform on the left, amplitude spectrum on the right."""
+    figure, axes = plt.subplots(nrows=len(CLASS_ORDER), ncols=2, figsize=(14, 14), constrained_layout=True)
+
+    for (waveform_axis, spectrum_axis), fault_type in zip(axes, CLASS_ORDER):
+        example = examples[fault_type]
+        segment = example.signal[:SAMPLES_FOR_SPECTRUM]  # the same duration for every class
+
+        draw_waveform(waveform_axis, fault_type, example, segment)
+        draw_spectrum(spectrum_axis, fault_type, example, segment)
+    return figure
+
+
+def save_figure(figure, output_path):
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output_path, dpi=160)
+    plt.close(figure)
+    logger.info("Plot saved to: %s", output_path)
+
+
+# --- Level 3: one panel --------------------------------------------------------------------------
+def draw_waveform(axis, fault_type, example, segment):
+    """The first 0.1 seconds of the signal."""
+    time = np.arange(SAMPLES_FOR_WAVEFORM) / example.sample_rate_hz
+    axis.plot(time, segment[:SAMPLES_FOR_WAVEFORM], linewidth=0.7)
+    axis.set_title(f"{fault_type} — {example.filename}")
+    axis.set_xlabel("Time (seconds)")
+    axis.set_ylabel("Amplitude")
+    axis.grid(True, alpha=0.3)
+
+
+def draw_spectrum(axis, fault_type, example, segment):
+    frequencies_hz, amplitudes = amplitude_spectrum(segment, example.sample_rate_hz)
+    axis.plot(frequencies_hz, amplitudes, linewidth=0.7)
+    axis.set_xlim(0, MAX_FREQUENCY_HZ)
+    axis.set_title(f"{fault_type} — amplitude spectrum")
+    axis.set_xlabel("Frequency (Hz)")
+    axis.set_ylabel("Amplitude")
+    axis.grid(True, alpha=0.3)
 
 
 if __name__ == "__main__":
