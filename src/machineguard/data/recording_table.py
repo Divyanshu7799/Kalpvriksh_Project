@@ -1,10 +1,12 @@
 """Tables that tie each processed recording to its label, and each window to its features."""
 
+import csv
 from pathlib import PureWindowsPath
 
 import numpy as np
 import pandas as pd
 
+from machineguard.config import CWRU_PROCESSED_DIR, CWRU_PROCESSED_MANIFEST_FILE
 from machineguard.data.preprocessing import split_into_windows
 from machineguard.features.time_domain import FEATURE_FUNCTIONS
 
@@ -12,6 +14,21 @@ from machineguard.features.time_domain import FEATURE_FUNCTIONS
 def file_name_of(source_file):
     """'data\\raw\\cwru\\BF\\118.mat' -> '118.mat' (accepts Windows and POSIX separators)."""
     return PureWindowsPath(source_file).name
+
+
+def read_processed_manifest(manifest_file=CWRU_PROCESSED_MANIFEST_FILE):
+    """Rows of the processed manifest, for the recordings that were processed successfully."""
+    with manifest_file.open(newline="", encoding="utf-8") as file:
+        return [row for row in csv.DictReader(file) if row["status"] == "processed"]
+
+
+def load_processed_signal(output_file, processed_dir=CWRU_PROCESSED_DIR):
+    """Load one processed recording as a finite, non-empty 1D float array."""
+    signal = np.asarray(np.load(processed_dir / output_file), dtype=float).ravel()
+
+    if signal.size == 0 or not np.isfinite(signal).all():
+        raise ValueError(f"Empty or non-finite signal: {output_file}")
+    return signal
 
 
 def load_recording_table(manifest_file, labels_file):
