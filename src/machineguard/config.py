@@ -1,8 +1,4 @@
-"""Project-wide file locations. Every script imports its paths from here, so each is defined once.
-
-Assumes the package is installed in editable mode (`python -m pip install -e .`), so that
-this file stays inside the project's src/ folder.
-"""
+"""Project-wide file locations and constants. Every script imports them from here, so each is defined once."""
 
 from pathlib import Path
 
@@ -16,4 +12,14 @@ CWRU_LABELS_FILE = CWRU_INTERIM_DIR / "labels.csv"
 CWRU_MANIFEST_FILE = CWRU_INTERIM_DIR / "recording_manifest.csv"
 CWRU_PROCESSED_MANIFEST_FILE = CWRU_PROCESSED_DIR / "processed_manifest.csv"
 
+DOCS_DIR = PROJECT_ROOT / "docs"
 FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+
+# Display and evaluation order of the four bearing conditions.
+CLASS_ORDER = ["Normal", "B", "IR", "OR"]
+
+
+def project_relative(path):
+    """Path relative to the project when possible (for readable logs and manifests), else the full path."""
+    path = Path(path)
+    return path.relative_to(PROJECT_ROOT) if path.is_relative_to(PROJECT_ROOT) else path
