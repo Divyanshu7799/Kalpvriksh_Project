@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from machineguard.config import CWRU_LABELS_FILE, CWRU_PROCESSED_DIR, FIGURES_DIR
+from machineguard.config import CWRU_LABELS_FILE, CWRU_PROCESSED_DIR, FIGURES_DIR, PROCESSED_SAMPLE_RATE_HZ
 from machineguard.features.bearing_frequencies import defect_frequencies_hz
 from machineguard.signal.spectrum import envelope_spectrum
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 FIGURE_FILE = FIGURES_DIR / "envelope_spectra.png"
 
-SAMPLE_RATE_HZ = 12000
+SAMPLE_RATE_HZ = PROCESSED_SAMPLE_RATE_HZ
 SEGMENT_SAMPLES = 16384  # about 1.4 s: long enough to resolve peaks about 1 Hz apart
 RESONANCE_BAND_HZ = (2500, 5500)  # provisional: read from the amplitude spectra, then justify in the log
 MAX_PLOTTED_HZ = 400

@@ -15,6 +15,9 @@ CWRU_PROCESSED_MANIFEST_FILE = CWRU_PROCESSED_DIR / "processed_manifest.csv"
 DOCS_DIR = PROJECT_ROOT / "docs"
 FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
 
+# Every processed CWRU recording is resampled to this rate (see preprocess_recordings.py).
+PROCESSED_SAMPLE_RATE_HZ = 12000
+
 # Display and evaluation order of the four bearing conditions.
 CLASS_ORDER = ["Normal", "B", "IR", "OR"]
 

@@ -8,7 +8,7 @@ import pandas as pd
 
 from machineguard.config import CWRU_PROCESSED_DIR, CWRU_PROCESSED_MANIFEST_FILE
 from machineguard.data.preprocessing import split_into_windows
-from machineguard.features.time_domain import FEATURE_FUNCTIONS
+from machineguard.features.registry import compute_features
 
 
 def file_name_of(source_file):
@@ -41,23 +41,24 @@ def load_recording_table(manifest_file, labels_file):
 
     manifest["file"] = manifest["source_file"].map(file_name_of)
     table = manifest[["file", "output_file"]].merge(
-        labels[["file", "fault_type", "size_in", "load_hp"]], on="file", how="left"
+        labels[["file", "fault_type", "size_in", "load_hp", "rpm"]], on="file", how="left"
     )
     table["load_hp"] = pd.to_numeric(table["load_hp"], errors="coerce")
+    table["rpm"] = pd.to_numeric(table["rpm"], errors="coerce")
 
-    unlabelled = table[table["load_hp"].isna() | table["fault_type"].isna()]
+    unlabelled = table[table["load_hp"].isna() | table["rpm"].isna() | table["fault_type"].isna()]
     if not unlabelled.empty:
-        raise ValueError(f"Recordings without a known load or fault type: {unlabelled['file'].tolist()}")
+        raise ValueError(f"Recordings without a known load, rpm or fault type: {unlabelled['file'].tolist()}")
     return table
 
 
-def build_window_table(recordings, processed_dir, feature_names, window_size, overlap):
+def build_window_table(recordings, processed_dir, feature_names, window_size, overlap, sample_rate_hz):
     """One row per window: its features plus which recording, class and load it came from."""
     parts = []
     for recording in recordings.itertuples():
         signal = np.load(processed_dir / recording.output_file)
         windows = split_into_windows(signal, window_size, overlap)
-        part = pd.DataFrame({name: FEATURE_FUNCTIONS[name](windows) for name in feature_names})
+        part = compute_features(feature_names, windows, sample_rate_hz, recording.rpm)
         part["file"] = recording.file
         part["fault_type"] = recording.fault_type
         part["load_hp"] = int(recording.load_hp)

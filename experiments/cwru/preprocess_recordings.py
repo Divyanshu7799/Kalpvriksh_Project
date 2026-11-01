@@ -17,13 +17,14 @@ from machineguard.config import (
     CWRU_PROCESSED_DIR,
     CWRU_PROCESSED_MANIFEST_FILE,
     CWRU_RAW_DIR,
+    PROCESSED_SAMPLE_RATE_HZ,
     project_relative,
 )
 from machineguard.data.preprocessing import resample_signal
 
 logger = logging.getLogger(__name__)
 
-TARGET_RATE_HZ = 12000
+TARGET_RATE_HZ = PROCESSED_SAMPLE_RATE_HZ
 CHANNEL = "DE"
 
 

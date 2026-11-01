@@ -22,6 +22,7 @@ def good_labels():
         "fault_type": ["B", "Normal"],
         "size_in": [0.007, 0],
         "load_hp": [0, 0],
+        "rpm": [1797, 1797],
     }
 
 
@@ -52,17 +53,17 @@ def test_recording_without_a_label_is_rejected(tmp_path):
     labels = {key: values[:1] for key, values in good_labels().items()}
     manifest_file, labels_file = write_tables(tmp_path, labels)
 
-    with pytest.raises(ValueError, match="without a known load or fault type"):
+    with pytest.raises(ValueError, match="without a known load, rpm or fault type"):
         load_recording_table(manifest_file, labels_file)
 
 
 def test_window_table_has_one_row_per_window_with_labels(tmp_path):
     np.save(tmp_path / "BF_118_DE.npy", np.arange(4096, dtype=float))
     recordings = pd.DataFrame(
-        {"file": ["118.mat"], "output_file": ["BF_118_DE.npy"], "fault_type": ["B"], "load_hp": [2.0]}
+        {"file": ["118.mat"], "output_file": ["BF_118_DE.npy"], "fault_type": ["B"], "load_hp": [2.0], "rpm": [1797]}
     )
 
-    table = build_window_table(recordings, tmp_path, ["rms"], window_size=2048, overlap=0.5)
+    table = build_window_table(recordings, tmp_path, ["rms"], window_size=2048, overlap=0.5, sample_rate_hz=12000)
 
     assert len(table) == 3
     assert set(table["fault_type"]) == {"B"}

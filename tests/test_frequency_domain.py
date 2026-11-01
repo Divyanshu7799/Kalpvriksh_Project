@@ -3,6 +3,7 @@ import pytest
 
 from machineguard.features.bearing_frequencies import defect_frequencies_hz
 from machineguard.features.frequency_domain import band_energy_ratio, envelope_peak_ratio
+from machineguard.features.registry import compute_features
 
 SAMPLE_RATE_HZ = 12000
 WINDOW_SIZE = 2048
@@ -59,3 +60,15 @@ def test_envelope_peak_ratio_for_plain_noise_is_small():
     ratio = envelope_peak_ratio(noise_windows(), SAMPLE_RATE_HZ, defect_frequencies_hz(RPM)["BPFO"])
 
     assert np.all(ratio < 5)
+
+
+def test_compute_features_returns_one_column_per_name_and_one_row_per_window():
+    table = compute_features(["rms", "band_energy_ratio", "env_bpfo"], noise_windows(3), SAMPLE_RATE_HZ, RPM)
+
+    assert list(table.columns) == ["rms", "band_energy_ratio", "env_bpfo"]
+    assert len(table) == 3
+
+
+def test_compute_features_rejects_an_unknown_name():
+    with pytest.raises(ValueError, match="Unknown features"):
+        compute_features(["not_a_feature"], noise_windows(), SAMPLE_RATE_HZ, RPM)
