@@ -10,15 +10,15 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from scipy.io import loadmat
+
 from machineguard.config import (
     CWRU_MANIFEST_FILE,
     CWRU_PROCESSED_DIR,
     CWRU_PROCESSED_MANIFEST_FILE,
     CWRU_RAW_DIR,
-    PROJECT_ROOT,
+    project_relative,
 )
-from scipy.io import loadmat
-
 from machineguard.data.preprocessing import resample_signal
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ def load_signal(source_path, variable_name):
 def build_metadata(row, source_path, variable_name, original_rate_hz, signal, processed):
     """Describe what was done to one recording."""
     return {
-        "source_file": describe_path(source_path),
+        "source_file": str(project_relative(source_path)),
         "source_variable": variable_name,
         "folder": row["folder"],
         "fault_type": row["fault_type"],
@@ -139,11 +139,6 @@ def build_metadata(row, source_path, variable_name, original_rate_hz, signal, pr
         "processed_samples": processed.size,
         "status": "processed",
     }
-
-
-def describe_path(path):
-    """Project-relative path when possible, otherwise the full path."""
-    return str(path.relative_to(PROJECT_ROOT)) if path.is_relative_to(PROJECT_ROOT) else str(path)
 
 
 def save_processed_recording(signal, metadata, output_dir=CWRU_PROCESSED_DIR):
