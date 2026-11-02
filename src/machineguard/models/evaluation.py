@@ -61,3 +61,19 @@ def summarise(all_results):
         per_load = {int(load): round(float(all_results[load][name].macro_f1), 4) for load in all_results}
         summary[name] = {"per_load": per_load, "mean": round(sum(per_load.values()) / len(per_load), 4)}
     return summary
+
+
+def recall_per_class(confusion):
+    """Share of each true class that was predicted correctly, in CLASS_ORDER (NaN for a class with no windows)."""
+    totals = confusion.sum(axis=1)
+    correct = confusion.diagonal()
+    return {
+        name: float(correct[index] / totals[index]) if totals[index] else float("nan")
+        for index, name in enumerate(CLASS_ORDER)
+    }
+
+
+def faults_missed_as_normal(confusion):
+    """Windows of a real fault that were predicted Normal: the dangerous mistake, a missed fault."""
+    normal = CLASS_ORDER.index("Normal")
+    return int(sum(confusion[row, normal] for row in range(len(CLASS_ORDER)) if row != normal))

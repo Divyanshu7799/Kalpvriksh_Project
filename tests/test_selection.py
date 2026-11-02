@@ -96,3 +96,22 @@ def test_selection_model_rejects_an_unknown_name():
 
     with pytest.raises(ValueError, match="Unknown selection model"):
         selection_model("magic")
+
+
+def test_recall_per_class_and_missed_faults():
+    from machineguard.models.evaluation import faults_missed_as_normal, recall_per_class
+
+    confusion = np.array([[10, 0, 0, 0], [3, 7, 0, 0], [1, 0, 9, 0], [0, 2, 0, 8]])
+
+    recalls = recall_per_class(confusion)
+
+    assert recalls == {"Normal": 1.0, "B": 0.7, "IR": 0.9, "OR": 0.8}
+    assert faults_missed_as_normal(confusion) == 4
+
+
+def test_recall_of_a_class_with_no_windows_is_nan():
+    from machineguard.models.evaluation import recall_per_class
+
+    confusion = np.array([[5, 0, 0, 0], [0, 0, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]])
+
+    assert np.isnan(recall_per_class(confusion)["B"])
