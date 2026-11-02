@@ -21,8 +21,9 @@ import numpy as np
 
 from machineguard.config import CLASS_ORDER, DEFAULT_WINDOW_SIZE, DEVELOPMENT_LOADS_HP, LOCKBOX_LOAD_HP, WINDOW_OVERLAP
 from machineguard.data.recording_table import load_window_table
+from machineguard.experiment_log import count_lockbox_runs, record_experiment
 from machineguard.features.registry import FEATURES
-from machineguard.models.evaluation import LOGISTIC_REGRESSION, evaluate_held_out_load
+from machineguard.models.evaluation import LOGISTIC_REGRESSION, evaluate_held_out_load, summarise
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,25 @@ def parse_arguments(argv):
 
 # --- The experiment, step by step ----------------------------------------------------------------
 def run_experiment(feature_names, window_size, final):
+    if final:
+        warn_if_lockbox_already_used()
     window_table = load_window_table(feature_names, window_size)
     logger.info("%d windows", len(window_table))
 
     loads_to_test, usable_windows = choose_loads(window_table, final)
     all_results = {load: evaluate_held_out_load(usable_windows, feature_names, load) for load in loads_to_test}
     report(all_results, feature_names, window_size)
+    arguments = {"features": feature_names, "window_size": window_size, "final": final}
+    record_experiment("feature_ladder", arguments, summarise(all_results))
+
+
+def warn_if_lockbox_already_used():
+    previous_looks = count_lockbox_runs()
+    if previous_looks:
+        logger.warning(
+            "The lock-box load was already evaluated %d time(s). Every extra look weakens the final test.",
+            previous_looks,
+        )
 
 
 def choose_loads(window_table, final):

@@ -42,3 +42,13 @@ def evaluate_held_out_load(window_table, feature_names, held_out_load, models=No
         matrix = confusion_matrix(test["fault_type"], predicted, labels=CLASS_ORDER)
         results[name] = ModelResult(macro_f1, matrix)
     return results
+
+
+def summarise(all_results):
+    """{model name: {"per_load": {load: macro-F1}, "mean": mean macro-F1}}: a plain form for logs and CSV files."""
+    model_names = list(next(iter(all_results.values())).keys())
+    summary = {}
+    for name in model_names:
+        per_load = {int(load): round(float(all_results[load][name].macro_f1), 4) for load in all_results}
+        summary[name] = {"per_load": per_load, "mean": round(sum(per_load.values()) / len(per_load), 4)}
+    return summary

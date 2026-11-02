@@ -17,6 +17,7 @@ import pandas as pd
 
 from machineguard.config import DEFAULT_WINDOW_SIZE, DEVELOPMENT_LOADS_HP, FEATURE_ENGINEERING_DIR
 from machineguard.data.recording_table import load_window_table
+from machineguard.experiment_log import record_experiment
 from machineguard.features.registry import FEATURES
 from machineguard.features.screening import (
     REDUNDANCY_THRESHOLD,
@@ -60,6 +61,8 @@ def run_screening(feature_names, window_size):
 
     print_report(correlations, relevance, information, kept, dropped)
     save_screening(feature_names, relevance, information, kept, dropped)
+    results = {"kept": kept, "dropped": {name: duplicate_of for name, (duplicate_of, _) in dropped.items()}}
+    record_experiment("screen_feature_pool", {"window_size": window_size, "features": feature_names}, results)
 
 
 def load_development_windows(feature_names, window_size):

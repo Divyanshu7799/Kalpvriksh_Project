@@ -15,6 +15,7 @@ import pandas as pd
 
 from machineguard.config import DEFAULT_WINDOW_SIZE, DEVELOPMENT_LOADS_HP, FEATURE_ENGINEERING_DIR
 from machineguard.data.recording_table import load_window_table
+from machineguard.experiment_log import record_experiment
 from machineguard.features.registry import FEATURES
 from machineguard.features.screening import require_complete
 from machineguard.models.selection import CHANCE_MACRO_F1, ablation, forward_select, selected_features
@@ -54,6 +55,14 @@ def run_selection(candidates, window_size):
 
     print_report(steps, chosen, full_score, losses)
     save_selection(steps)
+    results = {
+        "selected": chosen,
+        "steps": [
+            {"feature": step.feature, "mean_f1": round(step.mean_f1, 4), "accepted": step.accepted} for step in steps
+        ],
+        "ablation_loss": {name: round(loss, 4) for name, loss in losses.items()},
+    }
+    record_experiment("select_features", {"candidates": candidates, "window_size": window_size}, results)
 
 
 def print_report(steps, chosen, full_score, losses):
