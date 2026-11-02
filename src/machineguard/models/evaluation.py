@@ -7,11 +7,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, f1_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 
 from machineguard.config import CLASS_ORDER
 
 DUMMY = "dummy (most frequent class)"
 LOGISTIC_REGRESSION = "logistic regression"
+DECISION_TREE = "decision tree"
+
+SHALLOW_TREE_DEPTH = 3  # shallow, so the tree cannot memorise; still able to split a feature into several ranges
 
 ModelResult = namedtuple("ModelResult", ["macro_f1", "confusion"])
 
@@ -24,6 +28,11 @@ def make_models():
             LogisticRegression(class_weight="balanced", max_iter=1000),
         ),
     }
+
+
+def shallow_decision_tree():
+    """A depth-limited tree: unlike logistic regression it can give one class several separate value ranges."""
+    return DecisionTreeClassifier(max_depth=SHALLOW_TREE_DEPTH, class_weight="balanced", random_state=0)
 
 
 def evaluate_held_out_load(window_table, feature_names, held_out_load, models=None):

@@ -6,12 +6,10 @@ Every function here is pure (tables in, tables out). The experiment script decid
 import numpy as np
 import pandas as pd
 from sklearn.feature_selection import mutual_info_classif
-from sklearn.tree import DecisionTreeClassifier
 
-from machineguard.models.evaluation import evaluate_held_out_load
+from machineguard.models.evaluation import DECISION_TREE, evaluate_held_out_load, shallow_decision_tree
 
 REDUNDANCY_THRESHOLD = 0.95  # |Spearman correlation| above this means "carries the same information"
-SINGLE_FEATURE_TREE_DEPTH = 3  # shallow, so one feature cannot be memorised; allows non-linear class ranges
 
 
 def require_complete(window_table, feature_names):
@@ -34,13 +32,12 @@ def mutual_information(window_table, feature_names):
 
 def single_feature_scores(window_table, feature_names, held_out_loads):
     """Mean macro-F1 of each feature used alone, over folds that each hold one load out."""
-    models = {
-        "tree": DecisionTreeClassifier(max_depth=SINGLE_FEATURE_TREE_DEPTH, class_weight="balanced", random_state=0)
-    }
+    models = {DECISION_TREE: shallow_decision_tree()}
     scores = {}
     for name in feature_names:
         fold_scores = [
-            evaluate_held_out_load(window_table, [name], load, models)["tree"].macro_f1 for load in held_out_loads
+            evaluate_held_out_load(window_table, [name], load, models)[DECISION_TREE].macro_f1
+            for load in held_out_loads
         ]
         scores[name] = float(np.mean(fold_scores))
     return pd.Series(scores).sort_values(ascending=False)

@@ -18,11 +18,18 @@ from machineguard.data.recording_table import load_window_table
 from machineguard.experiment_log import record_experiment
 from machineguard.features.registry import FEATURES
 from machineguard.features.screening import require_complete
-from machineguard.models.selection import CHANCE_MACRO_F1, ablation, forward_select, selected_features
+from machineguard.models.evaluation import LOGISTIC_REGRESSION
+from machineguard.models.selection import (
+    CHANCE_MACRO_F1,
+    SELECTION_MODELS,
+    ablation,
+    forward_select,
+    selected_features,
+)
 
 logger = logging.getLogger(__name__)
 
-OUTPUT_FILE = FEATURE_ENGINEERING_DIR / "feature_selection.csv"
+OUTPUT_FILE = FEATURE_ENGINEERING_DIR / "feature_selection.csv"  # the latest run; the log keeps all runs
 
 
 # --- Entry point: the only place that catches errors --------------------------------------------
@@ -30,7 +37,7 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     arguments = parse_arguments(argv)
     try:
-        run_selection(arguments.candidates, arguments.window_size)
+        run_selection(arguments.candidates, arguments.window_size, arguments.model)
     except (FileNotFoundError, ValueError) as error:
         logger.error("Selection stopped: %s", error)
         sys.exit(1)
@@ -39,22 +46,27 @@ def main(argv=None):
 def parse_arguments(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--candidates", nargs="+", required=True, choices=sorted(FEATURES))
+    parser.add_argument(
+        "--model", choices=SELECTION_MODELS, default=LOGISTIC_REGRESSION, help="model that judges features"
+    )
     parser.add_argument("--window-size", type=int, default=DEFAULT_WINDOW_SIZE, help="samples per window")
     return parser.parse_args(argv)
 
 
 # --- The selection, step by step -----------------------------------------------------------------
-def run_selection(candidates, window_size):
+def run_selection(candidates, window_size, model_name):
     window_table = load_window_table(candidates, window_size)
     window_table = window_table[window_table["load_hp"].isin(DEVELOPMENT_LOADS_HP)]
     require_complete(window_table, candidates)
 
-    steps = forward_select(window_table, candidates, DEVELOPMENT_LOADS_HP)
+    steps = forward_select(window_table, candidates, DEVELOPMENT_LOADS_HP, model_name)
     chosen = selected_features(steps)
-    full_score, losses = ablation(window_table, chosen, DEVELOPMENT_LOADS_HP) if chosen else (CHANCE_MACRO_F1, {})
+    full_score, losses = (
+        ablation(window_table, chosen, DEVELOPMENT_LOADS_HP, model_name) if chosen else (CHANCE_MACRO_F1, {})
+    )
 
-    print_report(steps, chosen, full_score, losses)
-    save_selection(steps)
+    print_report(steps, chosen, full_score, losses, model_name)
+    save_selection(steps, model_name)
     results = {
         "selected": chosen,
         "steps": [
@@ -62,11 +74,14 @@ def run_selection(candidates, window_size):
         ],
         "ablation_loss": {name: round(loss, 4) for name, loss in losses.items()},
     }
-    record_experiment("select_features", {"candidates": candidates, "window_size": window_size}, results)
+    record_experiment(
+        "select_features", {"candidates": candidates, "window_size": window_size, "model": model_name}, results
+    )
 
 
-def print_report(steps, chosen, full_score, losses):
-    print(f"\nForward selection (start: chance level {CHANCE_MACRO_F1:.2f}; a feature is kept if gain > fold spread):")
+def print_report(steps, chosen, full_score, losses, model_name):
+    print(f"\nForward selection judged by: {model_name}")
+    print(f"Start: chance level {CHANCE_MACRO_F1:.2f}; a feature is kept if gain > fold spread")
     for number, step in enumerate(steps, start=1):
         verdict = "KEEP" if step.accepted else "STOP: not worth adding"
         print(
@@ -81,8 +96,11 @@ def print_report(steps, chosen, full_score, losses):
             print(f"  without {name:18s} loses {loss:+.3f}")
 
 
-def save_selection(steps):
-    pd.DataFrame(steps).to_csv(OUTPUT_FILE, index=False)
+def save_selection(steps, model_name):
+    table = pd.DataFrame(steps)
+    table["model"] = model_name
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    table.to_csv(OUTPUT_FILE, index=False)
     logger.info("Saved %s", OUTPUT_FILE)
 
 
