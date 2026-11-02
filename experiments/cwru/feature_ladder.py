@@ -19,28 +19,12 @@ import sys
 
 import numpy as np
 
-from machineguard.config import (
-    CLASS_ORDER,
-    CWRU_LABELS_FILE,
-    CWRU_PROCESSED_DIR,
-    CWRU_PROCESSED_MANIFEST_FILE,
-    PROCESSED_SAMPLE_RATE_HZ,
-)
-from machineguard.data.recording_table import build_window_table, load_recording_table
+from machineguard.config import CLASS_ORDER, DEFAULT_WINDOW_SIZE, DEVELOPMENT_LOADS_HP, LOCKBOX_LOAD_HP, WINDOW_OVERLAP
+from machineguard.data.recording_table import load_window_table
 from machineguard.features.registry import FEATURES
 from machineguard.models.evaluation import LOGISTIC_REGRESSION, evaluate_held_out_load
 
 logger = logging.getLogger(__name__)
-
-# --- Configuration -------------------------------------------------------------------------------
-# Provisional default: to be chosen by the window-size experiment (--window-size), not by habit.
-DEFAULT_WINDOW_SIZE = 2048
-OVERLAP = 0.5
-
-# Loads 0-2 are used to develop and compare feature sets. Load 3 is a lock-box: it is
-# touched once, at the very end, with --final.
-DEVELOPMENT_LOADS_HP = [0, 1, 2]
-LOCKBOX_LOAD_HP = 3
 
 
 # --- Entry point: the only place that catches errors --------------------------------------------
@@ -64,11 +48,7 @@ def parse_arguments(argv):
 
 # --- The experiment, step by step ----------------------------------------------------------------
 def run_experiment(feature_names, window_size, final):
-    recordings = load_recording_table(CWRU_PROCESSED_MANIFEST_FILE, CWRU_LABELS_FILE)
-    logger.info("%d labelled recordings", len(recordings))
-    window_table = build_window_table(
-        recordings, CWRU_PROCESSED_DIR, feature_names, window_size, OVERLAP, PROCESSED_SAMPLE_RATE_HZ
-    )
+    window_table = load_window_table(feature_names, window_size)
     logger.info("%d windows", len(window_table))
 
     loads_to_test, usable_windows = choose_loads(window_table, final)
@@ -90,7 +70,7 @@ def report(all_results, feature_names, window_size):
     loads = list(all_results)
     model_names = list(next(iter(all_results.values())).keys())
 
-    print(f"\nFeatures: {feature_names} | window={window_size} overlap={OVERLAP}")
+    print(f"\nFeatures: {feature_names} | window={window_size} overlap={WINDOW_OVERLAP}")
     print("\nMacro-F1 when each load is held out:")
     for name in model_names:
         scores = [all_results[load][name].macro_f1 for load in loads]

@@ -26,13 +26,16 @@ def make_models():
     }
 
 
-def evaluate_held_out_load(window_table, feature_names, held_out_load):
-    """Return {model name: ModelResult(macro_f1, confusion)} for one held-out load."""
+def evaluate_held_out_load(window_table, feature_names, held_out_load, models=None):
+    """Return {model name: ModelResult(macro_f1, confusion)} for one held-out load.
+
+    models is a {name: untrained model} dictionary; by default the project's standard models are used.
+    """
     train = window_table[window_table["load_hp"] != held_out_load]
     test = window_table[window_table["load_hp"] == held_out_load]
 
     results = {}
-    for name, model in make_models().items():
+    for name, model in (models or make_models()).items():
         model.fit(train[feature_names], train["fault_type"])
         predicted = model.predict(test[feature_names])
         macro_f1 = f1_score(test["fault_type"], predicted, labels=CLASS_ORDER, average="macro", zero_division=0)
