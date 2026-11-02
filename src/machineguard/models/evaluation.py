@@ -7,11 +7,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, f1_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 
 from machineguard.config import CLASS_ORDER
 
 DUMMY = "dummy (most frequent class)"
 LOGISTIC_REGRESSION = "logistic regression"
+DECISION_TREE = "decision tree"
+
+SHALLOW_TREE_DEPTH = 3  # shallow, so the tree cannot memorise; still able to split a feature into several ranges
 
 ModelResult = namedtuple("ModelResult", ["macro_f1", "confusion"])
 
@@ -26,16 +30,50 @@ def make_models():
     }
 
 
-def evaluate_held_out_load(window_table, feature_names, held_out_load):
-    """Return {model name: ModelResult(macro_f1, confusion)} for one held-out load."""
+def shallow_decision_tree():
+    """A depth-limited tree: unlike logistic regression it can give one class several separate value ranges."""
+    return DecisionTreeClassifier(max_depth=SHALLOW_TREE_DEPTH, class_weight="balanced", random_state=0)
+
+
+def evaluate_held_out_load(window_table, feature_names, held_out_load, models=None):
+    """Return {model name: ModelResult(macro_f1, confusion)} for one held-out load.
+
+    models is a {name: untrained model} dictionary; by default the project's standard models are used.
+    """
     train = window_table[window_table["load_hp"] != held_out_load]
     test = window_table[window_table["load_hp"] == held_out_load]
 
     results = {}
-    for name, model in make_models().items():
+    for name, model in (models or make_models()).items():
         model.fit(train[feature_names], train["fault_type"])
         predicted = model.predict(test[feature_names])
         macro_f1 = f1_score(test["fault_type"], predicted, labels=CLASS_ORDER, average="macro", zero_division=0)
         matrix = confusion_matrix(test["fault_type"], predicted, labels=CLASS_ORDER)
         results[name] = ModelResult(macro_f1, matrix)
     return results
+
+
+def summarise(all_results):
+    """{model name: {"per_load": {load: macro-F1}, "mean": mean macro-F1}}: a plain form for logs and CSV files."""
+    model_names = list(next(iter(all_results.values())).keys())
+    summary = {}
+    for name in model_names:
+        per_load = {int(load): round(float(all_results[load][name].macro_f1), 4) for load in all_results}
+        summary[name] = {"per_load": per_load, "mean": round(sum(per_load.values()) / len(per_load), 4)}
+    return summary
+
+
+def recall_per_class(confusion):
+    """Share of each true class that was predicted correctly, in CLASS_ORDER (NaN for a class with no windows)."""
+    totals = confusion.sum(axis=1)
+    correct = confusion.diagonal()
+    return {
+        name: float(correct[index] / totals[index]) if totals[index] else float("nan")
+        for index, name in enumerate(CLASS_ORDER)
+    }
+
+
+def faults_missed_as_normal(confusion):
+    """Windows of a real fault that were predicted Normal: the dangerous mistake, a missed fault."""
+    normal = CLASS_ORDER.index("Normal")
+    return int(sum(confusion[row, normal] for row in range(len(CLASS_ORDER)) if row != normal))

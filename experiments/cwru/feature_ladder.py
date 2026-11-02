@@ -19,28 +19,22 @@ import sys
 
 import numpy as np
 
-from machineguard.config import (
-    CLASS_ORDER,
-    CWRU_LABELS_FILE,
-    CWRU_PROCESSED_DIR,
-    CWRU_PROCESSED_MANIFEST_FILE,
-    PROCESSED_SAMPLE_RATE_HZ,
-)
-from machineguard.data.recording_table import build_window_table, load_recording_table
+from machineguard.config import CLASS_ORDER, DEFAULT_WINDOW_SIZE, DEVELOPMENT_LOADS_HP, LOCKBOX_LOAD_HP, WINDOW_OVERLAP
+from machineguard.data.recording_table import load_window_table
+from machineguard.experiment_log import count_lockbox_runs, record_experiment
 from machineguard.features.registry import FEATURES
-from machineguard.models.evaluation import LOGISTIC_REGRESSION, evaluate_held_out_load
+from machineguard.models.evaluation import (
+    DUMMY,
+    LOGISTIC_REGRESSION,
+    evaluate_held_out_load,
+    faults_missed_as_normal,
+    make_models,
+    recall_per_class,
+    summarise,
+)
+from machineguard.models.selection import SELECTION_MODELS, selection_model
 
 logger = logging.getLogger(__name__)
-
-# --- Configuration -------------------------------------------------------------------------------
-# Provisional default: to be chosen by the window-size experiment (--window-size), not by habit.
-DEFAULT_WINDOW_SIZE = 2048
-OVERLAP = 0.5
-
-# Loads 0-2 are used to develop and compare feature sets. Load 3 is a lock-box: it is
-# touched once, at the very end, with --final.
-DEVELOPMENT_LOADS_HP = [0, 1, 2]
-LOCKBOX_LOAD_HP = 3
 
 
 # --- Entry point: the only place that catches errors --------------------------------------------
@@ -48,7 +42,7 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     arguments = parse_arguments(argv)
     try:
-        run_experiment(arguments.features, arguments.window_size, arguments.final)
+        run_experiment(arguments.features, arguments.window_size, arguments.final, arguments.model)
     except (FileNotFoundError, ValueError) as error:
         logger.error("Experiment stopped: %s", error)
         sys.exit(1)
@@ -57,23 +51,41 @@ def main(argv=None):
 def parse_arguments(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--features", nargs="+", default=["rms"], choices=sorted(FEATURES))
+    parser.add_argument("--model", choices=SELECTION_MODELS, default=LOGISTIC_REGRESSION, help="classifier to score")
     parser.add_argument("--window-size", type=int, default=DEFAULT_WINDOW_SIZE, help="samples per window")
     parser.add_argument("--final", action="store_true", help="evaluate once on the lock-box load")
     return parser.parse_args(argv)
 
 
 # --- The experiment, step by step ----------------------------------------------------------------
-def run_experiment(feature_names, window_size, final):
-    recordings = load_recording_table(CWRU_PROCESSED_MANIFEST_FILE, CWRU_LABELS_FILE)
-    logger.info("%d labelled recordings", len(recordings))
-    window_table = build_window_table(
-        recordings, CWRU_PROCESSED_DIR, feature_names, window_size, OVERLAP, PROCESSED_SAMPLE_RATE_HZ
-    )
+def run_experiment(feature_names, window_size, final, model_name=LOGISTIC_REGRESSION):
+    if final:
+        warn_if_lockbox_already_used()
+    window_table = load_window_table(feature_names, window_size)
     logger.info("%d windows", len(window_table))
 
     loads_to_test, usable_windows = choose_loads(window_table, final)
-    all_results = {load: evaluate_held_out_load(usable_windows, feature_names, load) for load in loads_to_test}
-    report(all_results, feature_names, window_size)
+    all_results = {
+        load: evaluate_held_out_load(usable_windows, feature_names, load, models_to_score(model_name))
+        for load in loads_to_test
+    }
+    report(all_results, feature_names, window_size, model_name)
+    arguments = {"features": feature_names, "window_size": window_size, "final": final, "model": model_name}
+    record_experiment("feature_ladder", arguments, summarise(all_results))
+
+
+def models_to_score(model_name):
+    """The do-nothing baseline plus the chosen classifier."""
+    return {DUMMY: make_models()[DUMMY], model_name: selection_model(model_name)}
+
+
+def warn_if_lockbox_already_used():
+    previous_looks = count_lockbox_runs()
+    if previous_looks:
+        logger.warning(
+            "The lock-box load was already evaluated %d time(s). Every extra look weakens the final test.",
+            previous_looks,
+        )
 
 
 def choose_loads(window_table, final):
@@ -86,19 +98,24 @@ def choose_loads(window_table, final):
     return DEVELOPMENT_LOADS_HP, development_windows
 
 
-def report(all_results, feature_names, window_size):
+def report(all_results, feature_names, window_size, model_name):
     loads = list(all_results)
     model_names = list(next(iter(all_results.values())).keys())
 
-    print(f"\nFeatures: {feature_names} | window={window_size} overlap={OVERLAP}")
+    print(f"\nFeatures: {feature_names} | window={window_size} overlap={WINDOW_OVERLAP}")
     print("\nMacro-F1 when each load is held out:")
     for name in model_names:
         scores = [all_results[load][name].macro_f1 for load in loads]
         per_load = "  ".join(f"load {load}: {score:.2f}" for load, score in zip(loads, scores))
         print(f"  {name:28s} {per_load}   mean: {np.mean(scores):.2f}")
 
-    print(f"\nConfusion matrix (rows = true, columns = predicted), summed over folds. Order: {CLASS_ORDER}")
-    print(sum(all_results[load][LOGISTIC_REGRESSION].confusion for load in loads))
+    print(f"\nConfusion matrix of {model_name} (rows = true, columns = predicted), summed over folds.")
+    print(f"Class order: {CLASS_ORDER}")
+    confusion = sum(all_results[load][model_name].confusion for load in loads)
+    print(confusion)
+    recalls = "  ".join(f"{name} {value:.2f}" for name, value in recall_per_class(confusion).items())
+    print(f"Recall per class: {recalls}")
+    print(f"Faults called Normal: {faults_missed_as_normal(confusion)}")
 
 
 if __name__ == "__main__":

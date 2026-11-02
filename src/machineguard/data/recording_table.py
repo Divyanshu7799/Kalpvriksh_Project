@@ -6,7 +6,13 @@ from pathlib import PureWindowsPath
 import numpy as np
 import pandas as pd
 
-from machineguard.config import CWRU_PROCESSED_DIR, CWRU_PROCESSED_MANIFEST_FILE
+from machineguard.config import (
+    CWRU_LABELS_FILE,
+    CWRU_PROCESSED_DIR,
+    CWRU_PROCESSED_MANIFEST_FILE,
+    PROCESSED_SAMPLE_RATE_HZ,
+    WINDOW_OVERLAP,
+)
 from machineguard.data.preprocessing import split_into_windows
 from machineguard.features.registry import compute_features
 
@@ -64,3 +70,11 @@ def build_window_table(recordings, processed_dir, feature_names, window_size, ov
         part["load_hp"] = int(recording.load_hp)
         parts.append(part)
     return pd.concat(parts, ignore_index=True)
+
+
+def load_window_table(feature_names, window_size):
+    """The project's standard window table: every labelled processed recording, windowed, with features."""
+    recordings = load_recording_table(CWRU_PROCESSED_MANIFEST_FILE, CWRU_LABELS_FILE)
+    return build_window_table(
+        recordings, CWRU_PROCESSED_DIR, feature_names, window_size, WINDOW_OVERLAP, PROCESSED_SAMPLE_RATE_HZ
+    )
