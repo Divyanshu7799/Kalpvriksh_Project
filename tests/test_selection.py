@@ -115,3 +115,11 @@ def test_recall_of_a_class_with_no_windows_is_nan():
     confusion = np.array([[5, 0, 0, 0], [0, 0, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]])
 
     assert np.isnan(recall_per_class(confusion)["B"])
+
+
+def test_each_round_records_the_score_of_every_candidate_tried():
+    steps = forward_select(make_table(), ["noise", "useful_a", "useful_b"], held_out_loads=[0, 1, 2])
+
+    assert set(steps[0].scoreboard) == {"noise", "useful_a", "useful_b"}
+    assert max(steps[0].scoreboard, key=steps[0].scoreboard.get) == steps[0].feature
+    assert set(steps[1].scoreboard) == {"noise", "useful_a", "useful_b"} - {steps[0].feature}

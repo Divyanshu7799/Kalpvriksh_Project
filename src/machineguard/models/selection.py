@@ -20,9 +20,10 @@ from machineguard.models.evaluation import (
 # Macro-F1 of a classifier that knows nothing, with four balanced classes: the starting point of the first round.
 CHANCE_MACRO_F1 = 1 / len(CLASS_ORDER)
 
-# One round of forward selection: which feature was tried, the set's mean score, its spread across folds,
-# the gain over the previous set, and whether the gain was large enough to keep the feature.
-SelectionStep = namedtuple("SelectionStep", ["feature", "mean_f1", "fold_std", "gain", "accepted"])
+# One round of forward selection: the best feature of the round, the set's mean score, its spread across folds,
+# the gain over the previous set, whether the gain was large enough to keep the feature, and the scoreboard:
+# {every candidate tried this round: mean macro-F1 of the set with that candidate added}.
+SelectionStep = namedtuple("SelectionStep", ["feature", "mean_f1", "fold_std", "gain", "accepted", "scoreboard"])
 
 
 SELECTION_MODELS = (LOGISTIC_REGRESSION, DECISION_TREE)
@@ -62,7 +63,8 @@ def forward_select(window_table, candidates, held_out_loads, model_name=LOGISTIC
         mean_f1, fold_std = float(np.mean(scored[best])), float(np.std(scored[best], ddof=1))
         gain = mean_f1 - previous_mean
         accepted = gain > fold_std
-        steps.append(SelectionStep(best, mean_f1, fold_std, gain, accepted))
+        scoreboard = {name: float(np.mean(scores)) for name, scores in scored.items()}
+        steps.append(SelectionStep(best, mean_f1, fold_std, gain, accepted, scoreboard))
         if not accepted:
             break
         selected.append(best)

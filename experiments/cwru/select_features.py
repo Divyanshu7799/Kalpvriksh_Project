@@ -29,6 +29,7 @@ from machineguard.models.selection import (
 
 logger = logging.getLogger(__name__)
 
+SCOREBOARD_FILE = FEATURE_ENGINEERING_DIR / "feature_selection_scoreboard.csv"
 OUTPUT_FILE = FEATURE_ENGINEERING_DIR / "feature_selection.csv"  # the latest run; the log keeps all runs
 
 
@@ -66,7 +67,7 @@ def run_selection(candidates, window_size, model_name):
     )
 
     print_report(steps, chosen, full_score, losses, model_name)
-    save_selection(steps, model_name)
+    save_selection(steps, model_name, window_size)
     results = {
         "selected": chosen,
         "steps": [
@@ -84,10 +85,13 @@ def print_report(steps, chosen, full_score, losses, model_name):
     print(f"Start: chance level {CHANCE_MACRO_F1:.2f}; a feature is kept if gain > fold spread")
     for number, step in enumerate(steps, start=1):
         verdict = "KEEP" if step.accepted else "STOP: not worth adding"
+        runners_up = sorted(step.scoreboard.items(), key=lambda item: -item[1])[1:4]
         print(
             f"  {number}. + {step.feature:18s} F1 {step.mean_f1:.2f}  gain {step.gain:+.3f}  "
             f"fold spread {step.fold_std:.3f}  {verdict}"
         )
+        others = "  ".join(f"{name} {score:.2f}" for name, score in runners_up)
+        print(f"       next best that round: {others}")
 
     print(f"\nSelected set ({len(chosen)}): {chosen}")
     if chosen:
@@ -96,12 +100,24 @@ def print_report(steps, chosen, full_score, losses, model_name):
             print(f"  without {name:18s} loses {loss:+.3f}")
 
 
-def save_selection(steps, model_name):
-    table = pd.DataFrame(steps)
+def save_selection(steps, model_name, window_size):
+    table = pd.DataFrame(steps).drop(columns="scoreboard")
     table["model"] = model_name
+    table["window_size"] = window_size
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     table.to_csv(OUTPUT_FILE, index=False)
+    save_scoreboard(steps, model_name, window_size)
     logger.info("Saved %s", OUTPUT_FILE)
+
+
+def save_scoreboard(steps, model_name, window_size):
+    """Every candidate's score in every round: the evidence for "why this feature and not another"."""
+    rows = [
+        {"round": number, "feature": name, "mean_f1": round(score, 4), "model": model_name, "window_size": window_size}
+        for number, step in enumerate(steps, start=1)
+        for name, score in step.scoreboard.items()
+    ]
+    pd.DataFrame(rows).to_csv(SCOREBOARD_FILE, index=False)
 
 
 if __name__ == "__main__":
