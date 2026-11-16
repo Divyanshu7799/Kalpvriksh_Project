@@ -42,3 +42,12 @@ def test_non_positive_window_size_is_rejected(window_size):
 def test_invalid_overlap_is_rejected(overlap):
     with pytest.raises(ValueError, match="Overlap must be"):
         split_into_windows(np.arange(10), overlap=overlap)
+
+
+def test_a_quarter_overlap_moves_each_window_by_three_quarters_of_its_length():
+    signal = np.arange(1000)
+
+    windows = split_into_windows(signal, window_size=100, overlap=0.25)
+
+    assert windows.shape == (13, 100)  # starts 0, 75, ... 900; start 975 would run past the end
+    np.testing.assert_array_equal(windows[1], signal[75:175])

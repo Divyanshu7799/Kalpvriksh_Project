@@ -105,3 +105,10 @@ def test_ratio_features_are_nan_for_an_all_zero_window():
 
     for function in (shape_factor_per_window, impulse_factor_per_window, clearance_factor_per_window):
         assert np.isnan(function(zeros)[0])
+
+
+def test_clearance_factor_of_a_constant_window_is_one():
+    from machineguard.features.time_domain import clearance_factor_per_window
+
+    # peak 4; square-rooted amplitude 2, squared 4; 4 / 4 = 1
+    np.testing.assert_allclose(clearance_factor_per_window(np.full((1, 8), 4.0)), [1.0])

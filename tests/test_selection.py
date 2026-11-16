@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from machineguard.models.evaluation import DECISION_TREE, LOGISTIC_REGRESSION
-from machineguard.models.selection import ablation, forward_select, selected_features, selection_model
+from machineguard.models.selection import ablation, fold_scores, forward_select, selected_features, selection_model
 
 CLASSES = ["Normal", "B", "IR", "OR"]
 
@@ -123,3 +124,37 @@ def test_each_round_records_the_score_of_every_candidate_tried():
     assert set(steps[0].scoreboard) == {"noise", "useful_a", "useful_b"}
     assert max(steps[0].scoreboard, key=steps[0].scoreboard.get) == steps[0].feature
     assert set(steps[1].scoreboard) == {"noise", "useful_a", "useful_b"} - {steps[0].feature}
+
+
+def test_a_gain_smaller_than_the_fold_spread_is_rejected(monkeypatch):
+    # mean 0.44 is 0.19 above chance (0.25); the sample spread of the three folds is 0.20
+    monkeypatch.setattr("machineguard.models.selection.fold_scores", lambda *args, **kwargs: [0.24, 0.44, 0.64])
+
+    steps = forward_select(make_table(), ["only_candidate"], held_out_loads=[0, 1, 2])
+
+    assert steps[0].fold_std == pytest.approx(0.2)
+    assert not steps[0].accepted
+
+
+def test_a_score_below_chance_is_never_accepted(monkeypatch):
+    monkeypatch.setattr("machineguard.models.selection.fold_scores", lambda *args, **kwargs: [0.2, 0.2, 0.2])
+
+    steps = forward_select(make_table(), ["only_candidate"], held_out_loads=[0, 1, 2])
+
+    assert steps[0].gain < 0
+    assert not steps[0].accepted
+
+
+def test_the_held_out_load_is_never_used_for_training():
+    rng = np.random.default_rng(0)
+    parts = []
+    for load in (0, 1, 2):
+        for class_index, fault_type in enumerate(CLASSES):
+            # the feature carries the class ONLY on load 2, the load we hold out
+            values = np.full(40, class_index * 10.0) if load == 2 else rng.normal(size=40)
+            parts.append(pd.DataFrame({"x": values, "fault_type": fault_type, "load_hp": load}))
+    table = pd.concat(parts, ignore_index=True)
+
+    macro_f1 = fold_scores(table, ["x"], held_out_loads=[2], model_name=DECISION_TREE)[0]
+
+    assert macro_f1 < 0.5  # a model that saw load 2 while training would score close to 1

@@ -26,3 +26,13 @@ def test_envelope_spectrum_finds_the_rate_at_which_a_high_frequency_signal_pulse
 
     low_rates = (frequencies_hz > 20) & (frequencies_hz < 400)
     assert frequencies_hz[low_rates][amplitudes[low_rates].argmax()] == pytest.approx(107, abs=1)
+
+
+def test_envelope_spectrum_has_no_constant_component():
+    from machineguard.signal.spectrum import envelope_spectrum
+
+    steady_tone = np.sin(2 * np.pi * 4000 * np.arange(2048) / 12000)
+
+    _, amplitudes = envelope_spectrum(steady_tone, 12000, (2500, 5500))
+
+    assert amplitudes[0] < 0.01  # a steady tone has a flat outline, so nothing should sit at 0 Hz

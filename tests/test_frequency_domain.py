@@ -72,3 +72,12 @@ def test_compute_features_returns_one_column_per_name_and_one_row_per_window():
 def test_compute_features_rejects_an_unknown_name():
     with pytest.raises(ValueError, match="Unknown features"):
         compute_features(["not_a_feature"], noise_windows(), SAMPLE_RATE_HZ, RPM)
+
+
+def test_envelope_peak_ratio_ignores_a_peak_several_bins_away_from_the_defect_frequency():
+    bpfo_hz = defect_frequencies_hz(RPM)["BPFO"]
+    five_bins_hz = 5 * SAMPLE_RATE_HZ / WINDOW_SIZE
+
+    ratio = envelope_peak_ratio(bursts_at(bpfo_hz), SAMPLE_RATE_HZ, bpfo_hz + five_bins_hz)
+
+    assert np.all(ratio < 5)

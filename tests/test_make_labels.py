@@ -46,3 +46,16 @@ def test_file_with_unknown_id_gets_question_marks(tmp_path):
     rows = build_labels(data_root=tmp_path / "raw", output_path=tmp_path / "labels.csv")
 
     assert rows == [["9999.mat", "IR", "?", "?", "?", "?"]]
+
+
+def test_each_load_gets_its_own_rpm(tmp_path):
+    normal_dir = tmp_path / "raw" / "norml"
+    normal_dir.mkdir(parents=True)
+    for file_id in (97, 98, 99, 100):  # Normal recordings at 0, 1, 2, 3 HP
+        (normal_dir / f"{file_id}.mat").touch()
+
+    rows = build_labels(data_root=tmp_path / "raw", output_path=tmp_path / "labels.csv")
+
+    rpm_by_file = {row[0]: row[5] for row in rows}
+
+    assert rpm_by_file == {"97.mat": 1797, "98.mat": 1772, "99.mat": 1750, "100.mat": 1730}

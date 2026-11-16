@@ -82,3 +82,14 @@ def test_require_complete_rejects_missing_values():
 
     with pytest.raises(ValueError, match="noise"):
         require_complete(table, ["informative", "noise"])
+
+
+def test_redundant_pairs_lists_the_strongest_pair_first():
+    names = ["a", "b", "c"]
+    correlations = pd.DataFrame(
+        [[1.0, 0.96, 0.99], [0.96, 1.0, 0.0], [0.99, 0.0, 1.0]], index=names, columns=names
+    )
+
+    pairs = redundant_pairs(correlations)
+
+    assert [(first, second) for first, second, _ in pairs] == [("a", "c"), ("a", "b")]

@@ -16,3 +16,7 @@ def test_frequencies_scale_with_shaft_speed():
     fast = defect_frequencies_hz(1800)
 
     assert fast["BPFO"] == pytest.approx(2 * slow["BPFO"])
+
+
+def test_twice_ball_spin_frequency_at_1797_rpm():
+    assert defect_frequencies_hz(1797)["2xBSF"] == pytest.approx(141.17, abs=0.01)
